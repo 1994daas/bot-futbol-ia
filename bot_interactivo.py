@@ -555,7 +555,6 @@ def cmd_aprender(message):
         f"✅ *El resultado ya fue absorbido en la memoria histórica de Supabase.*"
     )
     bot.edit_message_text(reporte_mlops, message.chat.id, msg.message_id, parse_mode="Markdown")
-
 if __name__ == "__main__":
     print("🤖 Bot Interactivo conectado a las columnas reales de Supabase. Esperando comandos...")
     bot.infinity_polling()

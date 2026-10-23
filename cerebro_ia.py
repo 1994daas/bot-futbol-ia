@@ -1,4 +1,5 @@
 import math
+import time
 import numpy as np
 import pandas as pd
 import requests
@@ -235,7 +236,85 @@ def predecir_dixon_coles(lambda_local, lambda_visita, rho=-0.09):
 # =====================================================================
 # 4. ENTRENAMIENTO DEL ENSEMBLE ML + GENERACIÓN DE PRONÓSTICOS
 # =====================================================================
+def actualizar_partidos_finalizados_automatico():
+    """Busca partidos pendientes en Supabase con lógica avanzada para detectar empates y penales."""
+    from datetime import datetime, timezone
+    import re
+    from curl_cffi import requests as c_requests
+    
+    ahora_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    
+    res = supabase.table("partidos").select("*").lte("fecha_utc", ahora_iso).is_("goles_local", "null").execute()
+    pendientes = res.data if res.data else []
+    
+    if not pendientes:
+        print("ℹ️ No hay partidos pendientes de resultado en Supabase.")
+        return
+
+    print(f"🔄 Sincronizando {len(pendientes)} partidos pasados con detección inteligente...")
+    
+    for p in pendientes:
+        pid = p.get("partido_id")
+        loc_completo = str(p.get("local_nombre", "")).strip()
+        vis_completo = str(p.get("visita_nombre", "")).strip()
+        
+        query = f"{loc_completo} vs {vis_completo} resultado marcador"
+        url_search = f"https://html.duckduckgo.com/html/?q={query.replace(' ', '+')}"
+        
+        try:
+            r = c_requests.get(url_search, impersonate="chrome120", timeout=10)
+            
+            if r.status_code == 200:
+                html = r.text.lower()
+                loc_keyword = loc_completo.split()[0].lower()
+                vis_keyword = vis_completo.split()[0].lower()
+                
+                if loc_keyword in html and vis_keyword in html:
+                    # REGLA INTELIGENTE: Si el partido se definió por penales o menciona empate sin goles
+                    if "penales" in html or "tanda" in html or "empate sin goles" in html or "0-0" in html:
+                        # Si es un partido cerrado con penales, el resultado en los 90 reglamentarios fue 0-0
+                        gl, gv = 0, 0
+                        supabase.table("partidos").update({
+                            "estado": "FINALIZADO",
+                            "goles_local": gl,
+                            "goles_visita": gv
+                        }).eq("partido_id", pid).execute()
+                        print(f"✅ ¡Actualizado automáticamente (Empate/Penales detectados)! {loc_completo} {gl}-{gv} {vis_completo}")
+                        continue
+
+                    # Búsqueda estándar de marcadores si no hubo penales
+                    matches = re.findall(r'(\d+)\s*[-–]\s*(\d+)', html)
+                    if matches:
+                        actualizado = False
+                        for gl_str, gv_str in matches:
+                            gl, gv = int(gl_str), int(gv_str)
+                            # Filtrar números que parezcan globales absurdos o años
+                            if gl <= 10 and gv <= 10 and not (gl == 2026 or gv == 2026):
+                                supabase.table("partidos").update({
+                                    "estado": "FINALIZADO",
+                                    "goles_local": gl,
+                                    "goles_visita": gv
+                                }).eq("partido_id", pid).execute()
+                                print(f"✅ ¡Actualizado vía web con éxito! {loc_completo} {gl}-{gv} {vis_completo}")
+                                actualizado = True
+                                break
+                        if not actualizado:
+                            print(f"⏳ Menciones encontradas pero sin marcador claro para {loc_completo}.")
+                    else:
+                        print(f"⏳ Sin patrón numérico claro para {loc_completo}.")
+                else:
+                    print(f"⏳ Sin suficientes resultados web para {loc_completo} vs {vis_completo}.")
+            else:
+                print(f"⚠️ Error en buscador web. Código HTTP: {r.status_code}")
+        except Exception as e:
+            print(f"⚠️ Excepción al sincronizar: {e}")
+        # ==========================================
+        # 3. PEGA LA PAUSA AQUÍ (al final del bucle for)
+        # ==========================================
+        time.sleep(1.5)
 def ejecutar_cerebro_completo():
+    # 👈 Añade esta línea aquí adentro como primer paso:
+    actualizar_partidos_finalizados_automatico()
     # 1. Enriquecer próximos partidos con clima y alineaciones
     enriquecer_proximos_partidos()
 
