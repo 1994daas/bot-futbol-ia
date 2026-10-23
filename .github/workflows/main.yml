@@ -2,7 +2,9 @@ name: Bot de Futbol IA Diario
 
 on:
   schedule:
-    - cron: '0 8 * * *'
+    - cron: '0 8 * * *'   # 03:00 AM (Barrido general matutino)
+    - cron: '0 16 * * *'  # 11:00 AM (Previo a jornada europea)
+    - cron: '0 22 * * *'  # 05:00 PM (Previo a jornada sudamericana)
   workflow_dispatch:
 
 jobs:
@@ -20,7 +22,7 @@ jobs:
       - name: Instalar Dependencias
         run: |
           python -m pip install --upgrade pip
-          pip install supabase python-dotenv requests pandas numpy scipy scikit-learn xgboost lightgbm curl_cffi
+          pip install supabase python-dotenv requests pandas numpy scipy scikit-learn xgboost lightgbm curl_cffi pyTelegramBotAPI
 
       - name: Ejecutar Cerebro del Bot e IA
         env:
